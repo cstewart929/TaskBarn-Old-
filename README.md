@@ -1,1 +1,1 @@
-Hello! This will eventually serve as an artist project management application, where the user can keep track of current comissions and personal projects.
+Hello! This will eventually serve as a task management application, where users can keep track of current project progress and to-do lists.
