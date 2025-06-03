@@ -4,7 +4,7 @@ import json
 import os
 
 SAVE_FILE = "tasks.brn"
-COLUMNS = 2  # Number of task columns
+COLUMNS = 2
 
 class Task:
     def __init__(self, root, title, remove_callback=None, checkboxes=None):
@@ -66,7 +66,12 @@ class Task:
         self.update_emoji()
 
     def toggle_entry_color(self, entry, var):
-        entry.configure(foreground="gray" if var.get() else "black")
+        if var.get():
+            entry.configure(foreground="gray")
+            entry.configure(font=("Segoe UI", 10, "overstrike"))
+        else:
+            entry.configure(foreground="black")
+            entry.configure(font=("Segoe UI", 10))
 
     def update_emoji(self):
         count = len(self.checkboxes)
@@ -194,7 +199,6 @@ class TaskManagerApp:
                 self.place_tasks()
 
 
-# Run the app
 root = tk.Tk()
 app = TaskManagerApp(root)
 root.mainloop()
