@@ -90,8 +90,18 @@ class Task:
         self.add_button.pack(anchor="w", pady=5)
 
         if checkboxes:
-            for label, checked in checkboxes:
-                self.add_checkbox(label, checked)
+            for cb_data in checkboxes:
+                # Handle both old (2 elements) and new (3 elements) formats
+                if len(cb_data) == 2:
+                    label, checked = cb_data
+                    deadline = ""
+                elif len(cb_data) > 2:
+                    label, checked, deadline = cb_data[:3] # Take the first 3 elements if more exist
+                else:
+                    # Skip invalid entries with less than 2 elements
+                    print(f"Skipping invalid checkbox data during init: {cb_data}")
+                    continue # Skip to the next item
+                self.add_checkbox(label, checked, deadline)
         else:
             self.add_checkbox()
 
@@ -124,7 +134,7 @@ class Task:
         if self.dirty_callback:
             self.dirty_callback()
 
-    def add_checkbox(self, label="", checked=False):
+    def add_checkbox(self, label="", checked=False, deadline=None):
         var = tk.BooleanVar(value=checked)
         container = tk.Frame(self.frame, bg=self.color)
         container.pack(fill="x", pady=2)
@@ -140,10 +150,19 @@ class Task:
         entry.bind("<Shift-Tab>", lambda e, entry=entry: self.focus_prev_entry(entry))
         entry.bind("<KeyRelease>", self._on_checkbox_edit)
 
+        # Add deadline button and label
+        deadline_btn = tk.Button(container, text="📅", width=2, command=lambda: self.set_checkbox_deadline(container, deadline_label), bg=self.color, fg=self.get_text_color())
+        deadline_btn.pack(side="right", padx=2)
+        
+        deadline_label = tk.Label(container, text="", font=("Segoe UI", 8), bg=self.color, fg=self.get_text_color())
+        deadline_label.pack(side="right", padx=2)
+        if deadline:
+            deadline_label.config(text=self.get_checkbox_due_text(deadline))
+
         close = tk.Button(container, text="✖", width=3, command=lambda: self.remove_checkbox(container, entry, var), bg=self.color, fg=self.get_text_color())
         close.pack(side="right")
 
-        self.checkboxes.append((container, entry, var, cb))
+        self.checkboxes.append((container, entry, var, cb, deadline_label, deadline or ""))
 
         # Set initial state using toggle_entry_color, potentially delayed for color
         self.toggle_entry_color(entry, var) # Apply font immediately
@@ -181,6 +200,9 @@ class Task:
         else:
             entry.configure(foreground=self.get_text_color())
             entry.configure(font=("Segoe UI", 10))
+        # Mark the task as dirty when checkbox state changes
+        if self.dirty_callback:
+            self.dirty_callback()
 
     def update_emoji(self):
         count = len(self.checkboxes)
@@ -206,7 +228,7 @@ class Task:
     def get_data(self):
         return {
             "title": self.title,
-            "checkboxes": [(entry.get(), var.get()) for _, entry, var, _ in self.checkboxes],
+            "checkboxes": [(entry.get(), var.get(), deadline) for _, entry, var, _, _, deadline in self.checkboxes],
             "due_date": self.due_date,
             "color": self.color,
             "created": self.created
@@ -253,13 +275,14 @@ class Task:
             except Exception:
                 pass
         # Also update all checkbox containers, entries, and buttons
-        for container, entry, var, cb in self.checkboxes:
+        for container, entry, var, cb, deadline_label, _ in self.checkboxes:
             try:
                 container.configure(bg=self.color)
                 entry.configure(bg=self.color, fg=text_color)
                 cb.configure(bg=self.color, fg=text_color, selectcolor=self.color, activebackground=self.color, activeforeground=text_color)
+                deadline_label.configure(bg=self.color, fg=text_color)
                 for child in container.winfo_children():
-                    if isinstance(child, tk.Button) and child['text'] == '✖':
+                    if isinstance(child, tk.Button):
                         child.configure(bg=self.color, fg=text_color)
             except Exception:
                 pass
@@ -281,14 +304,26 @@ class Task:
         top.title("Select Due Date")
         cal = Calendar(top, selectmode='day')
         cal.pack(padx=10, pady=10)
+        
         def set_date():
             self.due_date = cal.get_date()
             self.due_label.config(text=self.get_due_text())
             if self.dirty_callback:
                 self.dirty_callback()
             top.destroy()
-        btn = tk.Button(top, text="Set", command=set_date)
-        btn.pack(pady=5)
+            
+        def remove_date():
+            self.due_date = ""
+            self.due_label.config(text="")
+            if self.dirty_callback:
+                self.dirty_callback()
+            top.destroy()
+            
+        btn_frame = tk.Frame(top)
+        btn_frame.pack(pady=5)
+        tk.Button(btn_frame, text="Set", command=set_date).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Remove", command=remove_date).pack(side="left", padx=5)
+        
         top.grab_set()
         top.wait_window()
 
@@ -355,6 +390,71 @@ class Task:
             # Reset background to default light red only if it was armed
             self.remove_task_label.configure(bg="#ffcccc")
 
+    def set_checkbox_deadline(self, container, deadline_label):
+        if Calendar is None:
+            messagebox.showerror("Calendar Not Installed", "Please install tkcalendar: pip install tkcalendar")
+            return
+        
+        # Find the checkbox data
+        checkbox_data = None
+        for cb_data in self.checkboxes:
+            if cb_data[0] == container:
+                checkbox_data = cb_data
+                break
+        
+        if not checkbox_data:
+            return
+            
+        top = tk.Toplevel()
+        top.title("Select Deadline")
+        cal = Calendar(top, selectmode='day')
+        cal.pack(padx=10, pady=10)
+        
+        def set_date():
+            date = cal.get_date()
+            # Update the checkbox data
+            idx = self.checkboxes.index(checkbox_data)
+            self.checkboxes[idx] = (container, checkbox_data[1], checkbox_data[2], checkbox_data[3], deadline_label, date)
+            deadline_label.config(text=self.get_checkbox_due_text(date))
+            if self.dirty_callback:
+                self.dirty_callback()
+            top.destroy()
+            
+        def remove_date():
+            # Update the checkbox data
+            idx = self.checkboxes.index(checkbox_data)
+            self.checkboxes[idx] = (container, checkbox_data[1], checkbox_data[2], checkbox_data[3], deadline_label, "")
+            deadline_label.config(text="")
+            if self.dirty_callback:
+                self.dirty_callback()
+            top.destroy()
+            
+        btn_frame = tk.Frame(top)
+        btn_frame.pack(pady=5)
+        tk.Button(btn_frame, text="Set", command=set_date).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Remove", command=remove_date).pack(side="left", padx=5)
+        
+        top.grab_set()
+        top.wait_window()
+
+    def get_checkbox_due_text(self, due_date):
+        if not due_date:
+            return ""
+        try:
+            due = datetime.strptime(due_date, "%m/%d/%y").date()
+            today = datetime.now().date()
+            days_left = (due - today).days
+            if days_left == 0:
+                return f"{due_date} (Today!)"
+            elif days_left == 1:
+                return f"{due_date} (Tomorrow!)"
+            elif days_left < 0:
+                return f"{due_date} ({-days_left} days overdue)"
+            else:
+                return f"{due_date} ({days_left} days left)"
+        except Exception:
+            return due_date
+
 class TaskManagerApp:
     def __init__(self, root):
         self.root = root
@@ -364,6 +464,7 @@ class TaskManagerApp:
         self.sort_method = tk.StringVar(value="created")
         self.bg_color = "#f0f0f0"
         self.fg_color = "#000000"
+        self._loading = True # Flag to prevent marking dirty during load
         
         # Load last used file and window size from config
         config = self.load_config()
@@ -432,6 +533,7 @@ class TaskManagerApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.load_tasks()
+        self._loading = False # Loading complete
 
     def _on_mousewheel(self, event):
         # Get current scroll position
@@ -448,7 +550,8 @@ class TaskManagerApp:
         self.place_tasks()  # Reflow tasks when window is resized
 
     def mark_dirty(self, *args, **kwargs):
-        self.dirty = True
+        if not self._loading:
+            self.dirty = True
 
     def add_task(self):
         title = self.entry.get().strip()
@@ -576,11 +679,25 @@ class TaskManagerApp:
                 with open(self.current_file, "r") as f:
                     data = json.load(f)
                     for item in data:
+                        loaded_checkboxes_data = item.get("checkboxes", [])
+                        checkboxes_to_add = []
+                        for cb_data in loaded_checkboxes_data:
+                            # Ensure cb_data is a list/tuple and has at least 2 elements
+                            if isinstance(cb_data, (list, tuple)) and len(cb_data) >= 2:
+                                label = cb_data[0]
+                                checked = cb_data[1]
+                                # Safely get the deadline if it exists
+                                deadline = cb_data[2] if len(cb_data) > 2 else ""
+                                checkboxes_to_add.append((label, checked, deadline))
+                            else:
+                                # Handle unexpected data format - skip or log
+                                print(f"Skipping invalid checkbox data: {cb_data}") # Or use a more robust error handling
+
                         task = Task(
                             self.task_frame,
                             item["title"],
                             remove_callback=self.remove_task,
-                            checkboxes=item.get("checkboxes", []),
+                            checkboxes=checkboxes_to_add,
                             dirty_callback=self.mark_dirty,
                             due_date=item.get("due_date", ""),
                             color=item.get("color", "#ffffff"),
