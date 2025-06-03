@@ -144,7 +144,13 @@ class Task:
         close.pack(side="right")
 
         self.checkboxes.append((container, entry, var, cb))
-        self.toggle_entry_color(entry, var)
+
+        # Set initial state using toggle_entry_color, potentially delayed for color
+        self.toggle_entry_color(entry, var) # Apply font immediately
+        if checked:
+            # Schedule color change after a short delay
+            entry.after(1, lambda: entry.configure(foreground="#808080"))
+
         self.update_emoji()
         if self.dirty_callback:
             self.dirty_callback()
@@ -169,8 +175,12 @@ class Task:
             self.dirty_callback()
 
     def toggle_entry_color(self, entry, var):
-        # Set text color to gray if checked, or the calculated text color if unchecked
-        entry.configure(foreground="gray" if var.get() else self.get_text_color())
+        if var.get():
+            entry.configure(foreground="#808080")  # Use explicit gray color
+            entry.configure(font=("Segoe UI", 10, "overstrike"))
+        else:
+            entry.configure(foreground=self.get_text_color())
+            entry.configure(font=("Segoe UI", 10))
 
     def update_emoji(self):
         count = len(self.checkboxes)
@@ -379,7 +389,8 @@ class TaskManagerApp:
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self.on_close)
 
-        # Sort dropdown (now at the very top)
+        self.root.bind("<Control-s>", self.save_tasks)
+
         sort_frame = tk.Frame(root, bg=self.bg_color)
         sort_frame.pack(padx=10, pady=(0, 5), fill="x", before=None)
         tk.Label(sort_frame, text="Sort by:", bg=self.bg_color, fg=self.fg_color).pack(side="left")
