@@ -10,7 +10,7 @@ except ImportError:
 
 SAVE_FILE = "tasks.brn"  # Default save file
 CONFIG_FILE = "taskbarn_config.json"  # Configuration file
-COLUMNS = 2  # Number of task columns
+#COLUMNS = 3  # Number of task columns
 
 SORT_OPTIONS = [
     ("Time Left", "time_left"),
@@ -139,36 +139,87 @@ class Task:
         container = tk.Frame(self.frame, bg=self.color)
         container.pack(fill="x", pady=2)
 
+        # Create a frame for the checkbox and text
+        checkbox_frame = tk.Frame(container, bg=self.color)
+        checkbox_frame.pack(fill="x")
+
         # Use tk.Checkbutton for color control
-        cb = tk.Checkbutton(container, variable=var, command=lambda e=None, v=var: self.toggle_entry_color(entry, v), bg=self.color, fg=self.get_text_color(), selectcolor=self.color, activebackground=self.color, activeforeground=self.get_text_color())
+        cb = tk.Checkbutton(checkbox_frame, variable=var, command=lambda e=None, v=var: self.toggle_entry_color(text_widget, v), bg=self.color, fg=self.get_text_color(), selectcolor=self.color, activebackground=self.color, activeforeground=self.get_text_color())
         cb.pack(side="left")
 
-        entry = tk.Entry(container, bg=self.color, fg=self.get_text_color())
-        entry.insert(0, label)
-        entry.pack(side="left", fill="x", expand=True, padx=(5, 5))
-        entry.bind("<Tab>", lambda e, entry=entry: self.focus_next_entry(entry))
-        entry.bind("<Shift-Tab>", lambda e, entry=entry: self.focus_prev_entry(entry))
-        entry.bind("<KeyRelease>", self._on_checkbox_edit)
+        # Create a frame to hold text widget and scrollbar
+        text_frame = tk.Frame(checkbox_frame, bg=self.color)
+        text_frame.pack(side="left", fill="x", expand=True, padx=(5, 5))
+
+        # Create a Text widget with wrapping and fixed width
+        text_widget = tk.Text(text_frame, height=1, width=30, wrap=tk.WORD, bg=self.color, fg=self.get_text_color())
+        text_widget.insert("1.0", label)
+        text_widget.pack(side="left", fill="x", expand=True)
+        
+        # Create scrollbar
+        scrollbar = tk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+        scrollbar.pack(side="right", fill="y")
+        text_widget.configure(yscrollcommand=scrollbar.set)
+        
+        # Initially hide scrollbar
+        scrollbar.pack_forget()
+        
+        # Configure text widget to adjust height based on content
+        def adjust_height(event=None):
+            text_widget.update_idletasks()
+            # Get the number of lines in the text
+            num_lines = int(text_widget.index('end-1c').split('.')[0])
+            # Set height to match content, but limit to 3 lines max
+            text_widget.configure(height=min(num_lines, 3))
+            
+            # Show/hide scrollbar based on content
+            if num_lines > 3:
+                scrollbar.pack(side="right", fill="y")
+            else:
+                scrollbar.pack_forget()
+        
+        # Bind events
+        text_widget.bind("<Tab>", lambda e, text=text_widget: self.focus_next_entry(text))
+        text_widget.bind("<Shift-Tab>", lambda e, text=text_widget: self.focus_prev_entry(text))
+        text_widget.bind("<KeyRelease>", lambda e: (self._on_checkbox_edit(e), adjust_height()))
+        text_widget.bind("<Configure>", adjust_height)
+        
+        # Configure tags for text styling
+        text_widget.tag_configure("strikethrough", overstrike=1)
+        text_widget.tag_configure("normal", overstrike=0)
+
+        # Create a frame for deadline and close button
+        bottom_frame = tk.Frame(container, bg=self.color)
+        bottom_frame.pack(fill="x", padx=(25, 0))  # Indent to align with text
 
         # Add deadline button and label
-        deadline_btn = tk.Button(container, text="📅", width=2, command=lambda: self.set_checkbox_deadline(container, deadline_label), bg=self.color, fg=self.get_text_color())
-        deadline_btn.pack(side="right", padx=2)
+        deadline_btn = tk.Button(bottom_frame, text="📅", width=2, command=lambda: self.set_checkbox_deadline(container, deadline_label), bg=self.color, fg=self.get_text_color())
+        deadline_btn.pack(side="left", padx=2)
         
-        deadline_label = tk.Label(container, text="", font=("Segoe UI", 8), bg=self.color, fg=self.get_text_color())
-        deadline_label.pack(side="right", padx=2)
-        if deadline:
-            deadline_label.config(text=self.get_checkbox_due_text(deadline))
+        deadline_label = tk.Label(bottom_frame, text="", font=("Segoe UI", 8), bg=self.color, fg=self.get_text_color())
+        deadline_label.pack(side="left", padx=2)
+        
+        # Initialize flashing state and after ID for this label
+        deadline_label._flashing = False
+        deadline_label._flash_id = None
 
-        close = tk.Button(container, text="✖", width=3, command=lambda: self.remove_checkbox(container, entry, var), bg=self.color, fg=self.get_text_color())
+        if deadline:
+            # Pass the label to get_checkbox_due_text to handle initial display and flashing
+            self.get_checkbox_due_text(deadline_label, deadline)
+
+        close = tk.Button(checkbox_frame, text="✖", width=3, command=lambda: self.remove_checkbox(container, text_widget, var), bg=self.color, fg=self.get_text_color())
         close.pack(side="right")
 
-        self.checkboxes.append((container, entry, var, cb, deadline_label, deadline or ""))
+        self.checkboxes.append((container, text_widget, var, cb, deadline_label, deadline or ""))
 
-        # Set initial state using toggle_entry_color, potentially delayed for color
-        self.toggle_entry_color(entry, var) # Apply font immediately
+        # Set initial state using toggle_entry_color
+        self.toggle_entry_color(text_widget, var)
         if checked:
             # Schedule color change after a short delay
-            entry.after(1, lambda: entry.configure(foreground="#808080"))
+            text_widget.after(1, lambda: text_widget.configure(foreground="#808080"))
+        
+        # Initial height adjustment
+        adjust_height()
 
         self.update_emoji()
         if self.dirty_callback:
@@ -182,7 +233,14 @@ class Task:
         luminance = 0.299*r + 0.587*g + 0.114*b
         return '#ffffff' if luminance < 128 else '#000000'
 
-    def remove_checkbox(self, container, entry, var):
+    def remove_checkbox(self, container, text_widget, var):
+        # Stop flashing before destroying the widget
+        for cb_data in self.checkboxes:
+            if cb_data[0] == container:
+                deadline_label = cb_data[4]
+                self.stop_checkbox_due_flash(deadline_label)
+                break
+
         container.destroy()
         self.checkboxes = [cb for cb in self.checkboxes if cb[0] != container]
         self.update_emoji()
@@ -193,13 +251,15 @@ class Task:
         if self.dirty_callback:
             self.dirty_callback()
 
-    def toggle_entry_color(self, entry, var):
+    def toggle_entry_color(self, text_widget, var):
         if var.get():
-            entry.configure(foreground="#808080")  # Use explicit gray color
-            entry.configure(font=("Segoe UI", 10, "overstrike"))
+            text_widget.configure(foreground="#808080")  # Use explicit gray color
+            text_widget.tag_remove("normal", "1.0", "end-1c")
+            text_widget.tag_add("strikethrough", "1.0", "end-1c")
         else:
-            entry.configure(foreground=self.get_text_color())
-            entry.configure(font=("Segoe UI", 10))
+            text_widget.configure(foreground=self.get_text_color())
+            text_widget.tag_remove("strikethrough", "1.0", "end-1c")
+            text_widget.tag_add("normal", "1.0", "end-1c")
         # Mark the task as dirty when checkbox state changes
         if self.dirty_callback:
             self.dirty_callback()
@@ -221,6 +281,10 @@ class Task:
         self.emoji_label.config(text=emoji)
 
     def remove_task(self):
+        # Stop all checkbox flashing in this task before destroying
+        for _, _, _, _, deadline_label, _ in self.checkboxes:
+             self.stop_checkbox_due_flash(deadline_label)
+
         self.container.destroy()
         if self.remove_callback:
             self.remove_callback(self)
@@ -228,26 +292,26 @@ class Task:
     def get_data(self):
         return {
             "title": self.title,
-            "checkboxes": [(entry.get(), var.get(), deadline) for _, entry, var, _, _, deadline in self.checkboxes],
+            "checkboxes": [(text_widget.get("1.0", "end-1c"), var.get(), deadline) for _, text_widget, var, _, _, deadline in self.checkboxes],
             "due_date": self.due_date,
             "color": self.color,
             "created": self.created
         }
 
-    def focus_next_entry(self, current_entry):
-        entries = [entry for _, entry, _ in self.checkboxes]
+    def focus_next_entry(self, current_text):
+        entries = [text for _, text, _ in self.checkboxes]
         try:
-            idx = entries.index(current_entry)
+            idx = entries.index(current_text)
             if idx + 1 < len(entries):
                 entries[idx + 1].focus_set()
                 return "break"
         except ValueError:
             pass
 
-    def focus_prev_entry(self, current_entry):
-        entries = [entry for _, entry, _ in self.checkboxes]
+    def focus_prev_entry(self, current_text):
+        entries = [text for _, text, _ in self.checkboxes]
         try:
-            idx = entries.index(current_entry)
+            idx = entries.index(current_text)
             if idx > 0:
                 entries[idx - 1].focus_set()
                 return "break"
@@ -275,12 +339,22 @@ class Task:
             except Exception:
                 pass
         # Also update all checkbox containers, entries, and buttons
-        for container, entry, var, cb, deadline_label, _ in self.checkboxes:
+        for container, text_widget, var, cb, deadline_label, deadline in self.checkboxes:
             try:
                 container.configure(bg=self.color)
-                entry.configure(bg=self.color, fg=text_color)
+                text_widget.configure(bg=self.color, fg=text_color)
                 cb.configure(bg=self.color, fg=text_color, selectcolor=self.color, activebackground=self.color, activeforeground=text_color)
-                deadline_label.configure(bg=self.color, fg=text_color)
+                # Only update label color if not flashing overdue
+                # We check the current text content to see if it's an overdue message
+                current_text = deadline_label.cget('text')
+                is_overdue_text = "days overdue" in current_text
+
+                if not getattr(deadline_label, '_flashing', False) or not is_overdue_text:
+                     # If not flashing, or flashing but not the overdue state (which has a fixed color),
+                     # update the color based on the current task color.
+                     # This ensures overdue labels stay black/white.
+                     deadline_label.configure(bg=self.color, fg=text_color)
+
                 for child in container.winfo_children():
                     if isinstance(child, tk.Button):
                         child.configure(bg=self.color, fg=text_color)
@@ -415,7 +489,8 @@ class Task:
             # Update the checkbox data
             idx = self.checkboxes.index(checkbox_data)
             self.checkboxes[idx] = (container, checkbox_data[1], checkbox_data[2], checkbox_data[3], deadline_label, date)
-            deadline_label.config(text=self.get_checkbox_due_text(date))
+            # Pass the label to get_checkbox_due_text to handle updating text and flashing
+            self.get_checkbox_due_text(deadline_label, date)
             if self.dirty_callback:
                 self.dirty_callback()
             top.destroy()
@@ -424,7 +499,8 @@ class Task:
             # Update the checkbox data
             idx = self.checkboxes.index(checkbox_data)
             self.checkboxes[idx] = (container, checkbox_data[1], checkbox_data[2], checkbox_data[3], deadline_label, "")
-            deadline_label.config(text="")
+            # Pass the label and empty date to get_checkbox_due_text to handle updating text and stopping flashing
+            self.get_checkbox_due_text(deadline_label, "")
             if self.dirty_callback:
                 self.dirty_callback()
             top.destroy()
@@ -437,23 +513,112 @@ class Task:
         top.grab_set()
         top.wait_window()
 
-    def get_checkbox_due_text(self, due_date):
+    def get_checkbox_due_text(self, deadline_label, due_date):
+        text_to_display = ""
+        should_flash = False
+        is_overdue = False
+
         if not due_date:
-            return ""
-        try:
-            due = datetime.strptime(due_date, "%m/%d/%y").date()
-            today = datetime.now().date()
-            days_left = (due - today).days
-            if days_left == 0:
-                return f"{due_date} (Today!)"
-            elif days_left == 1:
-                return f"{due_date} (Tomorrow!)"
-            elif days_left < 0:
-                return f"{due_date} ({-days_left} days overdue)"
-            else:
-                return f"{due_date} ({days_left} days left)"
-        except Exception:
-            return due_date
+            # If no due date, stop flashing and set empty text
+            self.stop_checkbox_due_flash(deadline_label)
+            text_to_display = ""
+        else:
+            try:
+                due = datetime.strptime(due_date, "%m/%d/%y").date()
+                today = datetime.now().date()
+                days_left = (due - today).days
+
+                if days_left == 0:
+                    text_to_display = f"{due_date} (Today!)"
+                    should_flash = True
+                elif days_left == 1:
+                    text_to_display = f"{due_date} (Tomorrow!)"
+                    should_flash = True
+                elif days_left < 0:
+                    text_to_display = f"{due_date} ({-days_left} days overdue)"
+                    is_overdue = True # Stop flashing and set black background
+                else:
+                    text_to_display = f"{due_date} ({days_left} days left)"
+
+            except Exception:
+                text_to_display = due_date # Display raw date on error
+
+        # Always update the label text
+        deadline_label.config(text=text_to_display)
+
+        # Control flashing based on the calculated state
+        if should_flash:
+            self.start_checkbox_due_flash(deadline_label)
+        elif is_overdue:
+            self.stop_checkbox_due_flash(deadline_label, overdue=True)
+        else:
+            self.stop_checkbox_due_flash(deadline_label)
+
+        # Return the text to be consistent, although config updates the label directly
+        return text_to_display
+
+    # Modified to accept a specific label
+    def start_checkbox_due_flash(self, deadline_label):
+        # Check if flashing is already active for THIS label using the attribute on the label itself
+        if getattr(deadline_label, '_flashing', False):
+            return
+        # Set flashing state to True for THIS label
+        deadline_label._flashing = True
+        # Initialize flash state for THIS specific label for the color toggle
+        deadline_label._flash_state = False
+        # Start the flashing process for THIS label
+        self._flash_single_checkbox_due_label(deadline_label)
+
+    # Modified to accept a specific label
+    def stop_checkbox_due_flash(self, deadline_label, overdue=False):
+        # Check if flashing is active for THIS label before stopping
+        if getattr(deadline_label, '_flashing', False):
+            # Set flashing state to False for THIS label
+            deadline_label._flashing = False
+            # Cancel the scheduled after call if it exists for THIS label
+            if hasattr(deadline_label, '_flash_id') and deadline_label._flash_id:
+                 try:
+                    deadline_label.after_cancel(deadline_label._flash_id)
+                 except tk.TclError: # Handle case where widget is already destroyed
+                    pass
+                 # Clear the after ID for THIS label
+                 deadline_label._flash_id = None
+
+        # Set the final color based on overdue status
+        if overdue:
+            deadline_label.configure(bg="#000000", fg="#ffffff")
+        else:
+             # Use the task's current color for background when not overdue
+            deadline_label.configure(bg=self.color, fg=self.get_text_color())
+
+    # New method to flash a single checkbox deadline label
+    def _flash_single_checkbox_due_label(self, deadline_label):
+        # Ensure we should still be flashing and the widget still exists
+        # Check the _flashing attribute on the label itself
+        if not getattr(deadline_label, '_flashing', False) or not deadline_label.winfo_exists():
+            # Clean up any pending after call if flashing stopped or widget destroyed
+            if hasattr(deadline_label, '_flash_id') and deadline_label._flash_id:
+                 try:
+                    deadline_label.after_cancel(deadline_label._flash_id)
+                 except tk.TclError: # Handle case where widget is already destroyed
+                    pass
+                 deadline_label._flash_id = None
+            return
+
+        # Get flash state for this specific label
+        flash_state = getattr(deadline_label, '_flash_state', False)
+
+        # Toggle colors
+        if flash_state:
+            deadline_label.configure(bg="#ff4444", fg="#ffffff")
+        else:
+            deadline_label.configure(bg="#ffffff", fg="#ff4444")
+
+        # Toggle flash state for this specific label
+        deadline_label._flash_state = not flash_state
+        # Schedule the next flash using the label's after method
+        # Store the after ID on the label itself
+        deadline_label._flash_id = deadline_label.after(400, lambda: self._flash_single_checkbox_due_label(deadline_label))
 
 class TaskManagerApp:
     def __init__(self, root):
@@ -465,6 +630,8 @@ class TaskManagerApp:
         self.bg_color = "#f0f0f0"
         self.fg_color = "#000000"
         self._loading = True # Flag to prevent marking dirty during load
+        self._resize_after_id = None  # For debouncing resize events
+        self._last_canvas_width = 0  # Track last canvas width to avoid unnecessary updates
         
         # Load last used file and window size from config
         config = self.load_config()
@@ -545,9 +712,27 @@ class TaskManagerApp:
                 self.canvas.yview_scroll(-1, "units")
 
     def on_canvas_resize(self, event):
-        canvas_width = event.width
-        self.canvas.itemconfig("all", width=canvas_width)
-        self.place_tasks()  # Reflow tasks when window is resized
+        # Debounce resize events
+        if self._resize_after_id:
+            self.root.after_cancel(self._resize_after_id)
+        
+        # Only update if width actually changed
+        new_width = event.width
+        if new_width == self._last_canvas_width:
+            return
+            
+        self._last_canvas_width = new_width
+        
+        # Schedule the update after a short delay
+        self._resize_after_id = self.root.after(100, lambda: self._do_canvas_resize(new_width))
+    
+    def _do_canvas_resize(self, new_width):
+        self._resize_after_id = None
+        self.canvas.itemconfig("all", width=new_width)
+        # Calculate tasks per row dynamically
+        task_width_estimate = 300  # Approximate width of a task
+        tasks_per_row = max(1, new_width // task_width_estimate)
+        self.place_tasks(tasks_per_row)  # Pass the calculated number of columns
 
     def mark_dirty(self, *args, **kwargs):
         if not self._loading:
@@ -568,20 +753,20 @@ class TaskManagerApp:
             self.sort_and_place_tasks()
             self.mark_dirty()
 
-    def place_tasks(self):
+    def place_tasks(self, tasks_per_row):
+        # Skip if no tasks
+        if not self.tasks:
+            return
+            
         # Clear existing grid
         for task in self.tasks:
             task.container.grid_forget()
-        for i in range(20):  # Clear previous grid weights (arbitrary max columns)
+            
+        # Clear grid weights for a reasonable range
+        for i in range(20):  # Assuming max 20 columns is sufficient
             self.task_frame.grid_columnconfigure(i, weight=0)
 
-        # Calculate available width
-        available_width = self.canvas.winfo_width() - 20  # 20px padding
-        task_width = 300  # Approximate width of a task
-        tasks_per_row = max(1, available_width // task_width)
         num_tasks = len(self.tasks)
-        if num_tasks == 0:
-            return
         
         # Centering logic
         for row in range((num_tasks + tasks_per_row - 1) // tasks_per_row):
@@ -589,10 +774,16 @@ class TaskManagerApp:
             end = min(start + tasks_per_row, num_tasks)
             num_in_row = end - start
             pad = (tasks_per_row - num_in_row) // 2
+            
+            # Configure grid weights for current row
             for col in range(tasks_per_row):
-                self.task_frame.grid_columnconfigure(col, weight=0)
+                self.task_frame.grid_columnconfigure(col + 1 + pad, weight=1)
+
+            # Add spacer columns for centering
             self.task_frame.grid_columnconfigure(0, weight=1)  # Left spacer
-            self.task_frame.grid_columnconfigure(tasks_per_row + 1, weight=1)  # Right spacer
+            self.task_frame.grid_columnconfigure(tasks_per_row + 1 + pad, weight=1)  # Right spacer
+
+            # Place tasks in current row
             for i, task in enumerate(self.tasks[start:end]):
                 task.container.grid(row=row, column=i + 1 + pad, padx=5, pady=5, sticky="nsew")
 
@@ -727,7 +918,7 @@ class TaskManagerApp:
             self.tasks.sort(key=lambda t: t.title.lower())
         else:  # Date Created
             self.tasks.sort(key=lambda t: t.created)
-        self.place_tasks()
+        self.place_tasks(3)  # Default to 3 columns
 
     def new_file(self):
         if self.dirty:
