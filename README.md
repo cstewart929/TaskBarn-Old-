@@ -1,1 +1,7 @@
-This will eventually serve as a task management application, where users can keep track of current project progress and to-do lists.
+This is a checklist-style task management application for organizing your daily tasks and responsibilities! 
+
+Features:
+    - Task Groups
+    - Checkboxes
+    - Color Customization
+    - Deadlines
