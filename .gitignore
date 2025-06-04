@@ -1,8 +1,23 @@
-tasks.brn
-taskbarn_config.json
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
 dist/
-TaskBarn.spec
-__pycache__/
+*.egg-info/
+*.egg
+
+# VS Code
 .vscode/
-.gitignore
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# TaskBarn specific
+tasks.brn
+taskbarn_config.json
+TaskBarn.spec
