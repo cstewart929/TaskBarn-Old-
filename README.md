@@ -5,3 +5,7 @@ Features:
 - Checkboxes
 - Color Customization
 - Deadlines
+
+Planned Features:
+- Timer to keep track of progress
+- Link timer to specific windows
