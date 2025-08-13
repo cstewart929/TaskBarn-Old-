@@ -87,10 +87,10 @@ class Task:
                     label, checked = cb_data
                     deadline = ""
                 elif len(cb_data) > 2:
-                    label, checked, deadline = cb_data[:3] # Take the first 3 elements if more exist
+                    label, checked, deadline = cb_data[:3]
                 else:
                     print(f"Skipping invalid checkbox data during init: {cb_data}")
-                    continue # Skip to the next item
+                    continue 
                 self.add_checkbox(label, checked, deadline)
         else:
             self.add_checkbox()
@@ -167,7 +167,7 @@ class Task:
         text_widget.tag_configure("normal", overstrike=0)
 
         bottom_frame = tk.Frame(container, bg=self.color)
-        bottom_frame.pack(fill="x", padx=(25, 0))  # Indent to align with text
+        bottom_frame.pack(fill="x", padx=(25, 0))
 
         deadline_btn = tk.Button(bottom_frame, text="📅", width=2, command=lambda: self.set_checkbox_deadline(container, deadline_label), bg=self.color, fg=self.get_text_color())
         deadline_btn.pack(side="left", padx=2)
@@ -223,7 +223,7 @@ class Task:
 
     def toggle_entry_color(self, text_widget, var):
         if var.get():
-            text_widget.configure(foreground="#808080")  # Use explicit gray color
+            text_widget.configure(foreground="#808080")
             text_widget.tag_remove("normal", "1.0", "end-1c")
             text_widget.tag_add("strikethrough", "1.0", "end-1c")
         else:
@@ -323,7 +323,7 @@ class Task:
             except Exception:
                 pass
         try:
-            self.remove_task_label.configure(fg="#000000") # Always black
+            self.remove_task_label.configure(fg="#000000")
         except Exception:
             pass
         self.due_label.config(text=self.get_due_text())
@@ -486,12 +486,12 @@ class Task:
                     should_flash = True
                 elif days_left < 0:
                     text_to_display = f"{due_date} ({-days_left} days overdue)"
-                    is_overdue = True # Stop flashing and set black background
+                    is_overdue = True
                 else:
                     text_to_display = f"{due_date} ({days_left} days left)"
 
             except Exception:
-                text_to_display = due_date # Display raw date on error
+                text_to_display = due_date 
 
         deadline_label.config(text=text_to_display)
 
@@ -517,7 +517,7 @@ class Task:
             if hasattr(deadline_label, '_flash_id') and deadline_label._flash_id:
                  try:
                     deadline_label.after_cancel(deadline_label._flash_id)
-                 except tk.TclError: # Handle case where widget is already destroyed
+                 except tk.TclError:
                     pass
                  deadline_label._flash_id = None
 
@@ -620,7 +620,7 @@ class TaskManagerApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.load_tasks()
-        self._loading = False # Loading complete
+        self._loading = False
 
     def _on_mousewheel(self, event):
         first, last = self.canvas.yview()
@@ -675,7 +675,7 @@ class TaskManagerApp:
         for task in self.tasks:
             task.container.grid_forget()
             
-        for i in range(20):  # Assuming max 20 columns is sufficient
+        for i in range(20):
             self.task_frame.grid_columnconfigure(i, weight=0)
 
         num_tasks = len(self.tasks)
@@ -689,8 +689,8 @@ class TaskManagerApp:
             for col in range(tasks_per_row):
                 self.task_frame.grid_columnconfigure(col + 1 + pad, weight=1)
 
-            self.task_frame.grid_columnconfigure(0, weight=1)  # Left spacer
-            self.task_frame.grid_columnconfigure(tasks_per_row + 1 + pad, weight=1)  # Right spacer
+            self.task_frame.grid_columnconfigure(0, weight=1)
+            self.task_frame.grid_columnconfigure(tasks_per_row + 1 + pad, weight=1)
 
             for i, task in enumerate(self.tasks[start:end]):
                 task.container.grid(row=row, column=i + 1 + pad, padx=5, pady=5, sticky="nsew")
@@ -754,7 +754,6 @@ class TaskManagerApp:
         if file_path:
             self.current_file = file_path
             self.save_last_file()
-            # Clear existing tasks
             for task in self.tasks:
                 task.container.destroy()
             self.tasks.clear()
@@ -780,14 +779,14 @@ class TaskManagerApp:
                         loaded_checkboxes_data = item.get("checkboxes", [])
                         checkboxes_to_add = []
                         for cb_data in loaded_checkboxes_data:
-                            # Ensure cb_data is a list/tuple and has at least 2 elements
+                            
                             if isinstance(cb_data, (list, tuple)) and len(cb_data) >= 2:
                                 label = cb_data[0]
                                 checked = cb_data[1]
                                 deadline = cb_data[2] if len(cb_data) > 2 else ""
                                 checkboxes_to_add.append((label, checked, deadline))
                             else:
-                                print(f"Skipping invalid checkbox data: {cb_data}") # Or use a more robust error handling
+                                print(f"Skipping invalid checkbox data: {cb_data}") 
 
                         task = Task(
                             self.task_frame,
@@ -821,9 +820,9 @@ class TaskManagerApp:
             self.tasks.sort(key=lambda t: (-len(t.checkboxes), t.title.lower()))
         elif method == "Name" or method == "name":
             self.tasks.sort(key=lambda t: t.title.lower())
-        else:  # Date Created
+        else:
             self.tasks.sort(key=lambda t: t.created)
-        self.place_tasks(3)  # Default to 3 columns
+        self.place_tasks(3)
 
     def new_file(self):
         if self.dirty:
